@@ -3,7 +3,7 @@
 
 ---
 
-### a semi-automatic script for this is also included [here](https://www.github.com/thaYt/fedora-spotify-patcher/blob/master/fsp), you will still need to edit the spec file when it asks you and remove a line
+### a semi-automatic script for this is also included [here](https://www.github.com/thaYt/fedora-spotify-patch/blob/master/fsp), you will still need to edit the spec file when it asks you and remove a line
 
 ## to install spotify:
 ### dependencies:
