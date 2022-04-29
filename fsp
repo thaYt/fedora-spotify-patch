@@ -1,0 +1,35 @@
+#!/bin/sh
+# made by thaYt
+
+if [ "$(id -u)" != "0" ]; then
+   echo "this script must be run as root" 1>&2
+   exit 1
+fi
+
+mkdir /tmp/fsp
+cd /tmp/fsp
+
+# dependencies
+sudo dnf copr enable patrickl/libcurl-gnutls -y
+sudo dnf install alien rpmrebuild rpmdevtools libcurl-gnutls -y
+
+body=$(curl -s http://repository.spotify.com/pool/non-free/s/spotify-client/)
+
+e=$(echo "$body" | tail -n 3 | cut -d '"' -f 2 | head -n 1)
+
+wget http://repository.spotify.com/pool/non-free/s/spotify-client/"$e"
+
+echo "converting to rpm"
+sudo alien -rcv ./spotify-client_*.deb
+
+echo "remove the line '%dir %attr(0755, root, root) "/usr/bin"' from the file that will pop up in nano"
+echo "press ENTER to continue with this step"
+read
+
+EDITOR=nano rpmrebuild -d . -ep spotify-client-*.rpm
+
+dnf localinstall -y ./x86_64/spotify-client-*.rpm
+
+cd ~
+rm -rf /tmp/fsp
+echo "yeah"
