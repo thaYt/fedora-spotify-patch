@@ -1,35 +1,161 @@
-#!/bin/sh
+#!/bin/bash
 # made by thaYt
 
+help() {
+    echo "usage: sudo fsp [command]"
+    echo "commands:"
+    echo "  update, u: check for updates"
+    echo "  install, i: install spotify"
+}
+
 if [ "$(id -u)" != "0" ]; then
-   echo "this script must be run as root" 1>&2
-   exit 1
+    echo "this script requires root privileges"
+    help
+    exit 1
 fi
 
-mkdir /tmp/fsp
-cd /tmp/fsp
+info=$(dnf info spotify-client)
 
-# dependencies
-sudo dnf copr enable patrickl/libcurl-gnutls -y
-sudo dnf install alien rpmrebuild rpmdevtools libcurl-gnutls -y
+get_latest_version() {
+    latest=$(curl -s https://repository-origin.spotify.com/pool/non-free/s/spotify-client/ -L | tail -n 3 | cut -d '"' -f 2 | head -n 1 | cut -d "_" -f 2)
+    echo $latest
+}
 
-body=$(curl -s http://repository.spotify.com/pool/non-free/s/spotify-client/)
+check_fsp() {
+    currentfsp=$(echo "$info" | tail -n 4 | head -n 1)
+    if ! [ "$currentfsp" = "Description  : fsp" ]; then
+        echo "the current spotify package was not installed by fsp"
+        echo "would you like to reinstall? (y/N)"
+        read install
+        if [ "$install" = "y" ]; then
+            echo "installing..."
+            install
+        else
+            echo "exiting..."
+            exit 1
+        fi
+    fi
+}
 
-e=$(echo "$body" | tail -n 3 | cut -d '"' -f 2 | head -n 1)
+check_installed() {
+    lines=$(echo "$info" | wc -l)
+    if [ "$lines" -eq 1 ]; then
+        echo "spotify is not installed"
+    else
+        check_fsp
+        echo "spotify is installed"
+    fi
+}
 
-wget http://repository.spotify.com/pool/non-free/s/spotify-client/"$e"
+update() {
+    if [ "$(check_installed)" = "spotify is not installed" ]; then
+        echo "spotify is not installed"
+        echo "would you like to install? (y/N)"
+        read install
+        if [ "$install" = "y" ]; then
+            echo "installing..."
+            install
+        else
+            echo "exiting..."
+            exit 1
+        fi
+    fi
 
-echo "converting to rpm"
-sudo alien -rcv ./spotify-client_*.deb
+    version=$(echo "$info" | head -n 4 | tail -n 1 | cut -d ":" -f 2)
 
-echo "remove the line '%dir %attr(0755, root, root) "/usr/bin"' from the file that will pop up in nano"
-echo "press ENTER to continue with this step"
-read
+    major=$(echo $version | cut -d "." -f 2)
+    minor=$(echo $version | cut -d "." -f 3)
+    patch=$(echo $version | cut -d "." -f 4)
 
-EDITOR=nano rpmrebuild -d . -ep spotify-client-*.rpm
+    latest=$(get_latest_version)
+    latest_major=$(echo $latest | cut -d "." -f 2)
+    latest_minor=$(echo $latest | cut -d "." -f 3)
+    latest_patch=$(echo $latest | cut -d "." -f 4)
 
-dnf localinstall -y ./x86_64/spotify-client-*.rpm
+    if [ $major -lt $latest_major ] || [ $minor -lt $latest_minor ] || [ $patch -lt $latest_patch ]; then
+        echo "update available"
+        echo "current version: $version"
+        echo "latest version: $latest"
+        echo "would you like to update? (y/N)"
+        read update
+        if [ "$update" = "y" ]; then
+            echo "updating..."
+            dnf remove spotify-client -y
+            install "u"
+        else
+            echo "exiting..."
+            exit 1
+        fi
+    else
+        check_fsp
+        echo "spotify is up to date"
+    fi
+}
 
-cd ~
-rm -rf /tmp/fsp
-echo "yeah"
+install() {
+    if ! [ "$1" = "u" ]; then
+        installed=$(check_installed)
+        if [ "$installed" = "spotify is installed" ]; then
+            echo "spotify is already installed"
+            echo "would you like to reinstall? (y/N)"
+            read reinstall
+            if [ "$reinstall" = "y" ]; then
+                echo "reinstalling..."
+                dnf remove spotify-client -y
+            else
+                echo "exiting..."
+                exit 1
+            fi
+        fi
+    fi
+
+    echo "would you like to remove dependencies after use? (y/N)"
+    read remove
+
+    mkdir /tmp/fsp
+    cd /tmp/fsp
+
+    echo "installing dependencies..."
+    dnf install alien rpmrebuild rpmdevtools -y
+
+    tee ./scrptch <<EOF
+#!/bin/sh
+
+temp_file=\$(mktemp)
+grep -v '^%dir %attr(0755, root, root) "/usr/bin"' "\$1" > "\$temp_file"
+sed -i 's/^%description.*/%description\nfsp/' "\$temp_file"
+
+mv "\$temp_file" "\$1"
+EOF
+
+    chmod +x ./scrptch
+
+    # this sometimes fails
+    wget http://repository.spotify.com/pool/non-free/s/spotify-client/$(curl https://repository-origin.spotify.com/pool/non-free/s/spotify-client/ -L | tail -n 3 | cut -d '"' -f 2 | head -n 1)
+
+    echo "converting to rpm..."
+    alien -rcv ./spotify-client_*.deb
+
+    echo 'y' | EDITOR=./scrptch rpmrebuild -d . -ep spotify-client-*.rpm
+
+    dnf localinstall -y ./x86_64/spotify-client-*.rpm
+
+    echo "spotify is now installed!"
+    echo "cleaning..."
+
+    cd ~
+    rm -rf /tmp/fsp
+
+    if [ "$remove" = "y" ]; then
+    dnf remove alien rpmrebuild rpmdevtools -y
+    fi
+}
+
+
+if [ "$1" = "update" ] || [ "$1" = "u" ]; then
+    update
+elif [ "$1" = "install" ] || [ "$1" = "i" ]; then
+    install
+else
+    help
+fi
