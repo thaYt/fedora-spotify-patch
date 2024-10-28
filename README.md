@@ -2,6 +2,11 @@
 ## for when [the normal repo](https://www.github.com/rpmfusion/lpf-spotify-client) is outdated
 
 ### an automatic script for this is included [here](https://www.github.com/thaYt/fedora-spotify-patch/blob/master/fsp)
+```
+wget https://github.com/thaYt/fedora-spotify-patch/blob/main/fsp
+chmod +x fsp
+sudo ./fsp install
+```
 
 ## manual installation:
 
